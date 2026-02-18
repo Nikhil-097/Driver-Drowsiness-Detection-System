@@ -1,6 +1,7 @@
 import cv2
 import dlib
 import winsound
+import time
 from scipy.spatial import distance as dist
 from imutils import face_utils
 
@@ -37,12 +38,18 @@ def generate_frames():
 
     cap = cv2.VideoCapture(0)
 
+    prev_time = 0
     count = 0
 
     while True:
         success, frame = cap.read()
         if not success:
             break
+
+        # ================= FPS CALCULATION =================
+        current_time = time.time()
+        fps = 1 / (current_time - prev_time) if prev_time != 0 else 0
+        prev_time = current_time
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         rects = detector(gray, 0)
@@ -61,20 +68,22 @@ def generate_frames():
             cv2.drawContours(frame, [cv2.convexHull(rightEye)], -1, (0, 255, 0), 1)
 
             cv2.putText(frame, f"EAR: {ear:.2f}", (30, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
             if ear < EAR_THRESHOLD:
                 count += 1
                 if count >= CONSECUTIVE_FRAMES:
                     drowsy_state = True
-
-                    cv2.putText(frame, "DROWSINESS ALERT!", (50, 100),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
-
+                    cv2.putText(frame, "DROWSINESS ALERT!", (50, 120),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
                     winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
             else:
                 count = 0
                 drowsy_state = False
+
+        # ================= DRAW FPS =================
+        cv2.putText(frame, f"FPS: {int(fps)}", (30, 80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
         # Convert frame to JPEG
         ret, buffer = cv2.imencode('.jpg', frame)
