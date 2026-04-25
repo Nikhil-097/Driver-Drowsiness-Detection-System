@@ -1,6 +1,10 @@
 gsap.registerPlugin(ScrollTrigger);
 
 let globalParticles = [];
+let isCameraOn = false;
+
+// 🔥 SOUND ALERT
+let alarm = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
 
 // ================= PARTICLE SYSTEM =================
 
@@ -101,13 +105,29 @@ const ctx = document.getElementById('earChart').getContext('2d');
 
 const earData = {
     labels: [],
-    datasets: [{
-        label: 'EAR Value',
-        data: [],
-        borderColor: '#2E8B57',
-        borderWidth: 2,
-        fill: false
-    }]
+    datasets: [
+        {
+            label: 'EAR',
+            data: [],
+            borderColor: '#2E8B57',
+            borderWidth: 2,
+            fill: false
+        },
+        {
+            label: 'Warning',
+            data: [],
+            borderColor: 'yellow',
+            borderDash: [5,5],
+            fill: false
+        },
+        {
+            label: 'Critical',
+            data: [],
+            borderColor: 'red',
+            borderDash: [5,5],
+            fill: false
+        }
+    ]
 };
 
 const earChart = new Chart(ctx, {
@@ -121,31 +141,82 @@ const earChart = new Chart(ctx, {
     }
 });
 
-// Fetch EAR + Drowsy Status
+// ================= FETCH DATA =================
+
 setInterval(() => {
     fetch("/status")
     .then(res => res.json())
     .then(data => {
 
+        const ear = Number(data.ear) || 0;
+
+        // ================= GRAPH =================
         if (earData.labels.length > 30) {
             earData.labels.shift();
-            earData.datasets[0].data.shift();
+            earData.datasets.forEach(ds => ds.data.shift());
         }
 
         earData.labels.push('');
-        earData.datasets[0].data.push(data.ear);
+        earData.datasets[0].data.push(ear);
+        earData.datasets[1].data.push(0.20);
+        earData.datasets[2].data.push(0.15);
+
         earChart.update();
 
-        // Particle color change
+        // ================= UI TEXT =================
+        let alertText = document.getElementById("alertText");
+        let earValue = document.getElementById("earValue");
+        let marValue = document.getElementById("marValue");
+
+        if (earValue) earValue.innerText = "EAR: " + ear.toFixed(2);
+        if (marValue && data.mar !== undefined) {
+            marValue.innerText = "MAR: " + data.mar.toFixed(2);
+        }
+
+        // ================= ALERT STATE =================
+        if (!isCameraOn) {
+            alertText.innerText = "Camera Off";
+        } else if (ear < 0.15) {
+            alertText.innerText = " CRITICAL: WAKE UP!";
+        } else if (ear < 0.20) {
+            alertText.innerText = " WARNING: Take a break";
+        } else {
+            alertText.innerText = "NORMAL";
+        }
+
+        // ================= FLASH EFFECT =================
+        if (ear < 0.15 && isCameraOn) {
+            document.body.style.background = "#300000";
+        } else {
+            document.body.style.background = "#0E1512";
+        }
+
+        // ================= SOUND ALERT =================
+        if (ear < 0.15 && isCameraOn) {
+            alarm.play();
+        }
+
+        // ================= PARTICLES =================
         globalParticles.forEach(mat => {
-            if (data.drowsy) {
-                mat.color.set(0xff0000);
-            } else {
+
+            if (!isCameraOn) {
                 mat.color.set(0x2E8B57);
+                return;
             }
+
+            if (ear < 0.15) {
+                mat.color.set(0xff0000); // RED
+            } else if (ear < 0.20) {
+                mat.color.set(0xffff00); // YELLOW
+            } else {
+                mat.color.set(0x2E8B57); // GREEN
+            }
+
         });
 
-    });
+    })
+    .catch(err => console.error(err));
+
 }, 500);
 
 // ================= CAMERA CONTROL =================
@@ -154,6 +225,7 @@ function startCamera() {
     fetch("/start").then(() => {
         document.getElementById("videoFeed").src = "/video_feed";
         document.getElementById("status").innerText = "Status: Running";
+        isCameraOn = true;
     });
 }
 
@@ -161,5 +233,6 @@ function stopCamera() {
     fetch("/stop").then(() => {
         document.getElementById("videoFeed").src = "";
         document.getElementById("status").innerText = "Status: Stopped";
+        isCameraOn = false;
     });
 }
